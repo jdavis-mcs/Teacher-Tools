@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classroom Architect</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg: #f3f4f6;
+            --desk-bg: #ffffff;
+            --border: #e5e7eb;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            background-color: var(--bg);
+            overflow: hidden;
+        }
+
+        /* SIDEBAR CONTROLS */
+        #sidebar {
+            width: 300px;
+            background: white;
+            padding: 20px;
+            border-right: 1px solid #ccc;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            z-index: 10;
+        }
+
+        h2 { margin-top: 0; color: #333; }
+        
+        .control-group {
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 15px;
+            margin-bottom: 15px;
+        }
+
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            width: 100%;
+            margin-bottom: 8px;
+            transition: background 0.2s;
+        }
+        button:hover { background: #1d4ed8; }
+        button.secondary { background: #64748b; }
+        button.danger { background: #ef4444; }
+
+        select, input {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        /* CLASSROOM AREA */
+        #classroom {
+            flex-grow: 1;
+            position: relative;
+            background-image: radial-gradient(#ccc 1px, transparent 1px);
+            background-size: 20px 20px; /* Grid dots */
+            overflow: hidden;
+            cursor: grab;
+        }
+
+        #classroom:active { cursor: grabbing; }
+
+        /* DESK STYLES */
+        .desk {
+            width: 100px;
+            height: 60px;
+            background: var(--desk-bg);
+            border: 2px solid #333;
+            border-radius: 8px;
+            position: absolute;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            box-shadow: 3px 3px 10px rgba(0,0,0,0.1);
+            user-select: none;
+            cursor: move;
+            transition: transform 0.1s;
+        }
+
+        .desk:hover { border-color: var(--primary); }
+        .desk.selected { border-color: var(--primary); outline: 2px dashed var(--primary); z-index: 100; }
+
+        .desk input {
+            border: none;
+            background: transparent;
+            text-align: center;
+            width: 90%;
+            font-weight: bold;
+            font-size: 14px;
+            pointer-events: none; /* Allows dragging by clicking the text */
+        }
+
+        /* When editing, enable pointer events */
+        .desk.editing input { pointer-events: auto; background: #eef; }
+
+        /* Delete button on desk */
+        .delete-btn {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #ef4444;
+            color: white;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            font-size: 12px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .desk:hover .delete-btn { display: flex; }
+
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <h2>Architecture</h2>
+        
+        <div class="control-group">
+            <label>Current Class:</label>
+            <select id="chartSelector"></select>
+            <button onclick="createNewChart()" class="secondary">New Class +</button>
+            <button onclick="deleteCurrentChart()" class="danger">Delete Class</button>
+        </div>
+
+        <div class="control-group">
+            <h3>Controls</h3>
+            <button onclick="addDesk()">Add Student Desk</button>
+            <button onclick="addTeacherDesk()">Add Teacher Desk</button>
+            <p style="font-size: 0.8em; color: #666;">Double-click a desk to edit name.</p>
+        </div>
+
+        <div class="control-group">
+            <button onclick="downloadPDF()" style="background: #10b981;">Download PDF</button>
+        </div>
+        
+        <div style="margin-top:auto; font-size: 0.8em; color:#999;">
+            Note: Changes save automatically.
+        </div>
+    </div>
+
+    <div id="classroom">
+        </div>
+
+    <script>
+        // --- STATE MANAGEMENT ---
+        let charts = JSON.parse(localStorage.getItem('seatingCharts')) || { "Period 1": [] };
+        let currentChartId = Object.keys(charts)[0] || "Period 1";
+        
+        // Ensure at least one chart exists
+        if (Object.keys(charts).length === 0) {
+            charts["Period 1"] = [];
+            currentChartId = "Period 1";
+        }
+
+        const classroom = document.getElementById('classroom');
+        const selector = document.getElementById('chartSelector');
+
+        // --- INITIALIZATION ---
+        function init() {
+            updateSelector();
+            loadChart(currentChartId);
+            setupDragAndDrop();
+        }
+
+        // --- CHART MANAGEMENT ---
+        function updateSelector() {
+            selector.innerHTML = '';
+            Object.keys(charts).forEach(key => {
+                let opt = document.createElement('option');
+                opt.value = key;
+                opt.innerText = key;
+                if (key === currentChartId) opt.selected = true;
+                selector.appendChild(opt);
+            });
+        }
+
+        selector.addEventListener('change', (e) => {
+            currentChartId = e.target.value;
+            loadChart(currentChartId);
+        });
+
+        function createNewChart() {
+            const name = prompt("Enter Class Name (e.g., 'Science 101'):");
+            if (name && !charts[name]) {
+                charts[name] = [];
+                currentChartId = name;
+                saveData();
+                updateSelector();
+                loadChart(currentChartId);
+            } else if (charts[name]) {
+                alert("That name already exists!");
+            }
+        }
+
+        function deleteCurrentChart() {
+            if (confirm(`Are you sure you want to delete ${currentChartId}?`)) {
+                delete charts[currentChartId];
+                const keys = Object.keys(charts);
+                if (keys.length === 0) {
+                    charts["Period 1"] = [];
+                    currentChartId = "Period 1";
+                } else {
+                    currentChartId = keys[0];
+                }
+                saveData();
+                updateSelector();
+                loadChart(currentChartId);
+            }
+        }
+
+        function saveData() {
+            // Save all desk positions of current chart to state before saving to local storage
+            const desks = [];
+            document.querySelectorAll('.desk').forEach(el => {
+                desks.push({
+                    id: el.dataset.id,
+                    x: el.style.left,
+                    y: el.style.top,
+                    name: el.querySelector('input').value,
+                    type: el.dataset.type
+                });
+            });
+            charts[currentChartId] = desks;
+            localStorage.setItem('seatingCharts', JSON.stringify(charts));
+        }
+
+        function loadChart(id) {
+            classroom.innerHTML = ''; // Clear current desks
+            const desks = charts[id] || [];
+            desks.forEach(deskData => {
+                createDeskElement(deskData.x, deskData.y, deskData.name, deskData.id, deskData.type);
+            });
+        }
+
+        // --- DESK LOGIC ---
+        function addDesk() {
+            createDeskElement("50px", "50px", "Student", Date.now(), "student");
+            saveData();
+        }
+
+        function addTeacherDesk() {
+            createDeskElement("50px", "50px", "Teacher", Date.now(), "teacher");
+            saveData();
+        }
+
+        function createDeskElement(x, y, name, id, type) {
+            const el = document.createElement('div');
+            el.classList.add('desk');
+            if (type === 'teacher') {
+                el.style.width = "140px";
+                el.style.backgroundColor = "#e0f2fe";
+            }
+            el.style.left = x;
+            el.style.top = y;
+            el.dataset.id = id;
+            el.dataset.type = type;
+
+            const input = document.createElement('input');
+            input.value = name;
+            input.type = "text";
+            
+            // Delete Button
+            const delBtn = document.createElement('div');
+            delBtn.classList.add('delete-btn');
+            delBtn.innerText = "X";
+            delBtn.onclick = (e) => {
+                e.stopPropagation(); // Prevent drag start
+                el.remove();
+                saveData();
+            };
+
+            el.appendChild(input);
+            el.appendChild(delBtn);
+
+            // Double click to edit
+            el.addEventListener('dblclick', () => {
+                el.classList.add('editing');
+                input.focus();
+                input.select();
+            });
+
+            // Blur input to stop editing
+            input.addEventListener('blur', () => {
+                el.classList.remove('editing');
+                saveData();
+            });
+
+            input.addEventListener('keydown', (e) => {
+                if(e.key === 'Enter') input.blur();
+            });
+
+            classroom.appendChild(el);
+        }
+
+        // --- DRAG AND DROP LOGIC (Vanilla JS) ---
+        function setupDragAndDrop() {
+            let activeItem = null;
+            let currentX;
+            let currentY;
+            let initialX;
+            let initialY;
+            let xOffset = 0;
+            let yOffset = 0;
+
+            classroom.addEventListener('mousedown', dragStart);
+            document.addEventListener('mouseup', dragEnd);
+            document.addEventListener('mousemove', drag);
+
+            function dragStart(e) {
+                // Don't drag if clicking the delete button or editing input
+                if (e.target.closest('.delete-btn') || e.target.tagName === 'INPUT') return;
+                
+                const desk = e.target.closest('.desk');
+                if (desk) {
+                    activeItem = desk;
+                    // Get current position from style (parse 'px')
+                    const styleLeft = parseInt(activeItem.style.left || 0);
+                    const styleTop = parseInt(activeItem.style.top || 0);
+                    
+                    initialX = e.clientX - styleLeft;
+                    initialY = e.clientY - styleTop;
+
+                    activeItem.classList.add('selected');
+                }
+            }
+
+            function dragEnd() {
+                if (activeItem) {
+                    initialX = currentX;
+                    initialY = currentY;
+                    activeItem.classList.remove('selected');
+                    activeItem = null;
+                    saveData(); // Save position on drop
+                }
+            }
+
+            function drag(e) {
+                if (activeItem) {
+                    e.preventDefault();
+                    
+                    currentX = e.clientX - initialX;
+                    currentY = e.clientY - initialY;
+
+                    // Boundary checks (optional)
+                    if(currentX < 0) currentX = 0;
+                    if(currentY < 0) currentY = 0;
+
+                    activeItem.style.left = currentX + "px";
+                    activeItem.style.top = currentY + "px";
+                }
+            }
+        }
+
+        // --- PDF GENERATION ---
+        async function downloadPDF() {
+            const { jsPDF } = window.jspdf;
+            
+            // 1. Capture the #classroom div as an image
+            const canvas = await html2canvas(classroom, {
+                scale: 2 // Higher scale for better resolution
+            });
+
+            const imgData = canvas.toDataURL('image/png');
+            
+            // 2. Create PDF
+            // A4 size: 210 x 297 mm
+            const pdf = new jsPDF('l', 'mm', 'a4'); // 'l' for landscape
+            const width = pdf.internal.pageSize.getWidth();
+            const height = pdf.internal.pageSize.getHeight();
+            
+            pdf.setFontSize(16);
+            pdf.text(currentChartId, 10, 10);
+            
+            // Fit image to PDF
+            const imgProps = pdf.getImageProperties(imgData);
+            const pdfWidth = width - 20; // 10mm margin
+            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+            pdf.addImage(imgData, 'PNG', 10, 20, pdfWidth, pdfHeight);
+            pdf.save(`${currentChartId}_seating_chart.pdf`);
+        }
+
+        // Start App
+        init();
+
+    </script>
+</body>
+</html>
