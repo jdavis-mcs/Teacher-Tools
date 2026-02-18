@@ -303,37 +303,45 @@
           };
 
           const handleTextBlur = (id) => {
-             setEditingTextId(null);
-             setCurrentMediaItems(prev => prev.filter(item => {
-                 if (item.id === id && !item.content.trim()) return false;
-                 return true;
-             }));
-          };
+               // Only clear the editing ID if it matches the one being blurred
+               setEditingTextId(prev => (prev === id ? null : prev));
+               
+               // Clean up empty text boxes
+               setCurrentMediaItems(prev => prev.filter(item => {
+                   if (item.id === id && !item.content.trim()) return false;
+                   return true;
+               }));
+            };
 
           // --- Drawing ---
           const startDrawing = (e) => {
-            if (tool === 'cursor') return; 
+              if (tool === 'cursor') return; 
+              
+              let clientX, clientY;
+              const rect = canvasRef.current.getBoundingClientRect();
+              
+              if (e.nativeEvent.changedTouches) {
+                  clientX = e.nativeEvent.changedTouches[0].clientX - rect.left;
+                  clientY = e.nativeEvent.changedTouches[0].clientY - rect.top;
+              } else {
+                  clientX = e.clientX - rect.left;
+                  clientY = e.clientY - rect.top;
+              }
             
-            let clientX, clientY;
-            const rect = canvasRef.current.getBoundingClientRect();
+              if (tool === 'text') {
+                  // FIX: If we are already editing text, clicking the canvas should just finish editing.
+                  if (editingTextId) {
+                      setEditingTextId(null);
+                      return;
+                  }
+                  addTextItem(clientX, clientY);
+                  return;
+              }
             
-            if (e.nativeEvent.changedTouches) {
-                clientX = e.nativeEvent.changedTouches[0].clientX - rect.left;
-                clientY = e.nativeEvent.changedTouches[0].clientY - rect.top;
-            } else {
-                clientX = e.clientX - rect.left;
-                clientY = e.clientY - rect.top;
-            }
-
-            if (tool === 'text') {
-                addTextItem(clientX, clientY);
-                return;
-            }
-
-            contextRef.current.beginPath();
-            contextRef.current.moveTo(clientX, clientY);
-            isDrawingRef.current = true; // Use Ref for immediate response
-          };
+              contextRef.current.beginPath();
+              contextRef.current.moveTo(clientX, clientY);
+              isDrawingRef.current = true;
+            };
 
           const draw = (e) => {
             if (!isDrawingRef.current || tool === 'cursor' || tool === 'text') return;
@@ -461,13 +469,15 @@
 
           // --- Layout ---
           const getZIndex = (item) => {
-             if (item.id === editingTextId) return 50;
-             if (tool === 'text' || tool === 'cursor') {
-                 if (item.type === 'text') return 35;
-                 return 10;
-             }
-             return 10;
-          };
+               // Active text editor is always on top
+               if (item.id === editingTextId) return 50;
+               
+               // Text should generally stay above the canvas (30) so it remains readable
+               if (item.type === 'text') return 35;
+               
+               // Images/Videos stay slightly behind the canvas so you can draw on top of them
+               return 20; 
+            };
           const mediaPointerEvents = (tool === 'cursor' || tool === 'text') ? 'pointer-events-auto' : 'pointer-events-none';
           const canvasPointerEvents = (tool === 'cursor') ? 'pointer-events-none' : 'pointer-events-auto';
 
