@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Random Name Picker</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f0f4f8;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* SIDEBAR (Controls) */
+        #sidebar {
+            width: 300px;
+            background: white;
+            padding: 20px;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+        }
+
+        h2 { margin-top: 0; color: #2d3748; }
+
+        textarea {
+            flex-grow: 1;
+            margin-bottom: 20px;
+            padding: 10px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            resize: none;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        textarea:focus { border-color: #4299e1; outline: none; }
+
+        button#spin-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        button#spin-btn:active { transform: scale(0.98); }
+        button#spin-btn:disabled { opacity: 0.7; cursor: not-allowed; }
+
+        /* MAIN AREA (Wheel) */
+        #main {
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            background-image: radial-gradient(#cbd5e0 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        /* The Pointer (Triangle) */
+        #pointer {
+            position: absolute;
+            top: 50px; /* Adjust based on canvas size */
+            z-index: 5;
+            width: 0; 
+            height: 0; 
+            border-left: 20px solid transparent;
+            border-right: 20px solid transparent;
+            border-top: 40px solid #2d3748;
+            filter: drop-shadow(0 4px 4px rgba(0,0,0,0.3));
+        }
+
+        canvas {
+            filter: drop-shadow(0 10px 20px rgba(0,0,0,0.2));
+            transition: transform 0.2s;
+        }
+
+        /* NAV LINK */
+        .home-link {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            text-decoration: none;
+            color: #718096;
+            font-weight: bold;
+            font-size: 0.9rem;
+            background: rgba(255,255,255,0.8);
+            padding: 5px 10px;
+            border-radius: 5px;
+        }
+
+        /* MODAL (Winner) */
+        #winner-modal {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+
+        .modal-content h1 { font-size: 3rem; margin: 10px 0; color: #4a5568; }
+        .confetti { font-size: 4rem; display: block; margin-bottom: 10px; }
+        
+        @keyframes popIn {
+            from { transform: scale(0.5); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+    </style>
+</head>
+<body>
+
+    <a href="../index.html" class="home-link">← Back to Dashboard</a>
+
+    <div id="sidebar">
+        <h2>Class List</h2>
+        <textarea id="namesInput" placeholder="Enter names here&#10;One per line&#10;John Doe&#10;Jane Smith"></textarea>
+        <button id="spin-btn" onclick="spin()">SPIN!</button>
+        <p style="font-size: 0.8rem; color: #718096; margin-top: 10px; text-align: center;">
+            List saves automatically.
+        </p>
+    </div>
+
+    <div id="main">
+        <div id="pointer"></div>
+        <canvas id="wheel" width="500" height="500"></canvas>
+    </div>
+
+    <div id="winner-modal" onclick="closeModal()">
+        <div class="modal-content">
+            <span class="confetti">🎉</span>
+            <div style="font-size: 1.2rem; color: #a0aec0; font-weight: bold;">THE WINNER IS</div>
+            <h1 id="winner-name">Name</h1>
+            <p style="color:#cbd5e0; font-size: 0.8rem;">(Click anywhere to close)</p>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const canvas = document.getElementById('wheel');
+        const ctx = canvas.getContext('2d');
+        const namesInput = document.getElementById('namesInput');
+        const spinBtn = document.getElementById('spin-btn');
+        const modal = document.getElementById('winner-modal');
+        const winnerText = document.getElementById('winner-name');
+
+        let names = [];
+        let arc = 0;
+        let startAngle = 0; // Current rotation angle
+        let spinTimeout = null;
+        let spinAngleStart = 10; // Initial velocity
+        let spinTime = 0;
+        let spinTimeTotal = 0;
+        
+        // Colors for slices
+        const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7DC6F', '#BB8FCE', '#F1948A'];
+
+        // --- AUDIO ENGINE ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playTick() {
+            // Short, sharp "tick" sound
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+            osc.type = 'triangle';
+            
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.05);
+            
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.05);
+        }
+
+        function playWin() {
+            // Success chord
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const notes = [523.25, 659.25, 783.99]; // C Major
+            notes.forEach((freq, i) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0, audioCtx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.1);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.5);
+                osc.start(audioCtx.currentTime + (i * 0.1));
+                osc.stop(audioCtx.currentTime + 1.5);
+            });
+        }
+
+        // --- LOGIC ---
+
+        function drawWheel() {
+            if (names.length === 0) return;
+
+            const outsideRadius = 240;
+            const textRadius = 160;
+            const insideRadius = 50;
+
+            ctx.clearRect(0, 0, 500, 500);
+            
+            ctx.strokeStyle = "white";
+            ctx.lineWidth = 2;
+            
+            arc = Math.PI * 2 / names.length;
+            
+            for(let i = 0; i < names.length; i++) {
+                const angle = startAngle + i * arc;
+                
+                // Draw Slice
+                ctx.fillStyle = colors[i % colors.length];
+                ctx.beginPath();
+                ctx.arc(250, 250, outsideRadius, angle, angle + arc, false);
+                ctx.arc(250, 250, insideRadius, angle + arc, angle, true);
+                ctx.stroke();
+                ctx.fill();
+                
+                // Draw Text
+                ctx.save();
+                ctx.shadowColor = "rgba(0,0,0,0.5)";
+                ctx.shadowBlur = 4;
+                ctx.fillStyle = "white";
+                ctx.translate(250 + Math.cos(angle + arc / 2) * textRadius, 
+                              250 + Math.sin(angle + arc / 2) * textRadius);
+                ctx.rotate(angle + arc / 2 + Math.PI / 2); // Rotate text to point outward
+                const text = names[i];
+                // Trucate text if too long
+                ctx.font = 'bold 16px Arial';
+                ctx.fillText(text.length > 15 ? text.substring(0,12)+"..." : text, -ctx.measureText(text).width / 2, 0);
+                ctx.restore();
+            }
+
+            // Draw Center Circle (Hub)
+            ctx.fillStyle = "white";
+            ctx.beginPath();
+            ctx.arc(250, 250, 40, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // Draw Pointer Triangle (Static overlay in CSS, but this is the hub decoration)
+            ctx.fillStyle = "#333";
+            ctx.beginPath();
+            ctx.arc(250, 250, 10, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+
+        function rotateWheel() {
+            spinTime += 30;
+            if(spinTime >= spinTimeTotal) {
+                stopRotateWheel();
+                return;
+            }
+            
+            // Ease out logic
+            const spinAngle = spinAngleStart - easeOut(spinTime, 0, spinAngleStart, spinTimeTotal);
+            startAngle += (spinAngle * Math.PI / 180);
+            
+            // Play tick sound every time we cross a slice boundary roughly
+            // This is an estimation for sound feel
+            if (Math.floor(startAngle / arc) !== Math.floor((startAngle - (spinAngle * Math.PI / 180)) / arc)) {
+                playTick();
+            }
+
+            drawWheel();
+            spinTimeout = requestAnimationFrame(rotateWheel);
+        }
+
+        function stopRotateWheel() {
+            cancelAnimationFrame(spinTimeout);
+            
+            const degrees = startAngle * 180 / Math.PI + 90;
+            const arcd = arc * 180 / Math.PI;
+            const index = Math.floor((360 - degrees % 360) / arcd);
+            
+            ctx.save();
+            ctx.font = 'bold 30px Arial';
+            const text = names[index];
+            
+            // Show Modal
+            winnerText.innerText = text;
+            modal.style.display = "flex";
+            playWin();
+            
+            spinBtn.disabled = false;
+            ctx.restore();
+        }
+
+        function easeOut(t, b, c, d) {
+            const ts = (t/=d)*t;
+            const tc = ts*t;
+            return b+c*(tc + -3*ts + 3*t);
+        }
+
+        function spin() {
+            if (names.length < 2) {
+                alert("Please enter at least 2 names.");
+                return;
+            }
+            spinBtn.disabled = true;
+            spinAngleStart = Math.random() * 10 + 20; // Random start speed
+            spinTime = 0;
+            spinTimeTotal = Math.random() * 3000 + 4000; // Random duration (4-7 sec)
+            rotateWheel();
+        }
+
+        function closeModal() {
+            modal.style.display = 'none';
+        }
+
+        // --- INITIALIZATION ---
+        
+        // Load from storage
+        const savedNames = localStorage.getItem('classNames');
+        if (savedNames) {
+            namesInput.value = savedNames;
+        } else {
+            // Default data
+            namesInput.value = "Alice\nBob\nCharlie\nDiana\nEthan\nFiona";
+        }
+
+        function updateNames() {
+            const raw = namesInput.value;
+            localStorage.setItem('classNames', raw);
+            names = raw.split('\n').filter(n => n.trim() !== '');
+            drawWheel();
+        }
+
+        namesInput.addEventListener('input', updateNames);
+        
+        // Initial Draw
+        updateNames();
+
+    </script>
+</body>
+</html>
