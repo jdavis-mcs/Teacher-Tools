@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Browser Tools</title>
+    <style>
+        :root {
+            --primary: #4a90e2;
+            --bg: #f5f7fa;
+            --card-bg: #ffffff;
+            --text: #2c3e50;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+        }
+
+        /* Hero Section */
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 60px 20px;
+            text-align: center;
+        }
+
+        h1 { margin: 0; font-size: 2.5rem; letter-spacing: -1px; }
+        p.subtitle { font-size: 1.2rem; opacity: 0.9; margin-top: 10px; }
+
+        /* Container */
+        .container {
+            max-width: 1000px;
+            margin: -40px auto 40px; /* Overlap header */
+            padding: 0 20px;
+        }
+
+        /* Grid */
+        .app-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 25px;
+        }
+
+        /* App Card */
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 30px;
+            text-decoration: none;
+            color: var(--text);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.05);
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            border: 1px solid rgba(0,0,0,0.05);
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 30px rgba(0,0,0,0.1);
+        }
+
+        .icon {
+            font-size: 40px;
+            margin-bottom: 20px;
+            background: #eef2f7;
+            width: 80px;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+        }
+
+        .card h2 { margin: 0 0 10px 0; font-size: 1.4rem; }
+        .card p { margin: 0; color: #666; font-size: 0.95rem; line-height: 1.5; }
+
+        /* Badge for "Coming Soon" apps */
+        .badge {
+            background: #eee;
+            color: #777;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            margin-top: 15px;
+            font-weight: 600;
+        }
+
+        footer {
+            text-align: center;
+            padding: 40px;
+            color: #888;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Teacher Browser Tools</h1>
+        <p class="subtitle">Simple, privacy-friendly classroom utilities. No logins. No downloads.</p>
+    </header>
+
+    <div class="container">
+        <div class="app-grid">
+
+            <a href="./sticky-notes/" class="card">
+                <div class="icon">📝</div>
+                <h2>Sticky Board</h2>
+                <p>A draggable, resizable sticky note board for brainstorming and reminders.</p>
+            </a>
+
+            <div class="card" style="opacity: 0.7; cursor: default;">
+                <div class="icon">🎲</div>
+                <h2>Random Picker</h2>
+                <p>Fairly select a student or group for classroom activities.</p>
+                <span class="badge">Coming Soon</span>
+            </div>
+
+            <div class="card" style="opacity: 0.7; cursor: default;">
+                <div class="icon">⏱️</div>
+                <h2>Class Timer</h2>
+                <p>A clean countdown timer for tests and focused work sessions.</p>
+                <span class="badge">Coming Soon</span>
+            </div>
+
+             <div class="card" style="opacity: 0.7; cursor: default;">
+                <div class="icon">🔊</div>
+                <h2>Noise Meter</h2>
+                <p>Visual feedback to help keep the classroom volume level down.</p>
+                <span class="badge">Coming Soon</span>
+            </div>
+
+        </div>
+    </div>
+
+    <footer>
+        <p>Built for teachers. Runs entirely in your browser.</p>
+    </footer>
+
+</body>
+</html>

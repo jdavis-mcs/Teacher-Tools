@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browser Sticky Notes</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f0f0f0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden; 
+            height: 100vh;
+            /* 20px visual grid to match our 20px snap logic */
+            background-image: radial-gradient(#d1d1d1 1px, transparent 1px);
+            background-size: 20px 20px; 
+        }
+
+        /* Toolbar */
+        #toolbar {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+            display: flex;
+            gap: 10px;
+        }
+
+        button.tool-btn {
+            background-color: #333;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 5px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        button.tool-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* Active state for the Snap button */
+        button.tool-btn.active {
+            background-color: #4CAF50; /* Green */
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        /* Note Styles */
+        .note {
+            position: absolute;
+            width: 250px;
+            height: 250px;
+            background-color: #ffeb3b;
+            box-shadow: 2px 4px 10px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+            resize: both;
+            overflow: hidden;
+            border-radius: 2px;
+            min-width: 200px;
+            min-height: 200px;
+            transition: box-shadow 0.2s; /* Smooth lift effect */
+        }
+        
+        /* Smooth transition for snapping effect */
+        .note.snapping {
+            transition: top 0.2s cubic-bezier(0.25, 1, 0.5, 1), left 0.2s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+
+        /* Note Header */
+        .note-header {
+            padding: 8px;
+            cursor: grab;
+            background-color: rgba(0,0,0,0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            user-select: none;
+        }
+
+        .note-header:active {
+            cursor: grabbing;
+        }
+
+        .controls {
+            display: flex;
+            gap: 5px;
+        }
+
+        .color-picker {
+            width: 20px;
+            height: 20px;
+            border: none;
+            cursor: pointer;
+            background: transparent;
+            padding: 0;
+        }
+
+        .btn-icon {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            opacity: 0.6;
+        }
+        
+        .btn-icon:hover { opacity: 1; }
+
+        /* Note Body */
+        textarea {
+            flex-grow: 1;
+            width: 100%;
+            border: none;
+            background: transparent;
+            resize: none;
+            padding: 10px;
+            font-family: 'Comic Sans MS', 'Marker Felt', sans-serif;
+            font-size: 16px;
+            outline: none;
+            box-sizing: border-box;
+        }
+
+        .char-count {
+            font-size: 10px;
+            text-align: right;
+            padding: 2px 5px;
+            color: rgba(0,0,0,0.4);
+            pointer-events: none;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="toolbar">
+        <button class="tool-btn" onclick="createNote()">+ New Note</button>
+        <button class="tool-btn" id="snapBtn" onclick="toggleSnapMode()">
+            <span>🧲</span> Snap: <span id="snapState">OFF</span>
+        </button>
+    </div>
+
+    <div id="board">
+        </div>
+
+    <script>
+        // --- DATA MANAGEMENT ---
+        let notes = JSON.parse(localStorage.getItem('stickyNotes')) || [];
+        
+        // App State
+        let isSnapMode = false;
+        const GRID_SIZE = 20; // Matches background pattern size
+
+        function saveToStorage() {
+            localStorage.setItem('stickyNotes', JSON.stringify(notes));
+        }
+
+        // --- TOGGLE MODES ---
+        function toggleSnapMode() {
+            isSnapMode = !isSnapMode;
+            const btn = document.getElementById('snapBtn');
+            const txt = document.getElementById('snapState');
+            
+            if (isSnapMode) {
+                btn.classList.add('active');
+                txt.innerText = "ON";
+            } else {
+                btn.classList.remove('active');
+                txt.innerText = "OFF";
+            }
+        }
+
+        // --- INITIALIZATION ---
+        window.addEventListener('DOMContentLoaded', () => {
+            if (notes.length === 0) {
+                createNote("Welcome! Toggle the magnet button (top left) to turn grid snapping ON/OFF.", 100, 100, '#ffeb3b');
+            } else {
+                notes.forEach(note => renderNoteElement(note));
+            }
+        });
+
+        // --- CRUD OPERATIONS ---
+
+        function createNote(content = "", x = 50, y = 80, color = "#ffeb3b") {
+            const noteObj = {
+                id: Date.now(),
+                content: content,
+                x: x,
+                y: y,
+                width: 250,
+                height: 250,
+                color: color
+            };
+            
+            notes.push(noteObj);
+            saveToStorage();
+            renderNoteElement(noteObj);
+        }
+
+        function updateNote(id, key, value) {
+            const note = notes.find(n => n.id === id);
+            if (note) {
+                note[key] = value;
+                saveToStorage();
+            }
+        }
+
+        function deleteNote(id, element) {
+            if(confirm("Delete this note?")) {
+                notes = notes.filter(n => n.id !== id);
+                saveToStorage();
+                element.remove();
+            }
+        }
+
+        function exportNote(id) {
+            const note = notes.find(n => n.id === id);
+            if (!note) return;
+
+            const blob = new Blob([note.content], { type: 'text/plain' });
+            const anchor = document.createElement('a');
+            anchor.href = URL.createObjectURL(blob);
+            anchor.download = `note-${id}.txt`;
+            anchor.click();
+            URL.revokeObjectURL(anchor.href);
+        }
+
+        // --- DOM MANIPULATION ---
+
+        function renderNoteElement(noteObj) {
+            const el = document.createElement('div');
+            el.classList.add('note');
+            el.id = noteObj.id;
+            el.style.left = noteObj.x + 'px';
+            el.style.top = noteObj.y + 'px';
+            el.style.width = noteObj.width + 'px';
+            el.style.height = noteObj.height + 'px';
+            el.style.backgroundColor = noteObj.color;
+            el.style.zIndex = 1; 
+
+            el.innerHTML = `
+                <div class="note-header">
+                    <span style="font-size:12px; opacity:0.5">:::</span>
+                    <div class="controls">
+                        <input type="color" class="color-picker" value="${noteObj.color}" title="Change Color">
+                        <button class="btn-icon" title="Export to TXT">⬇</button>
+                        <button class="btn-icon delete-btn" title="Delete">✖</button>
+                    </div>
+                </div>
+                <textarea maxlength="500" placeholder="Type here...">${noteObj.content}</textarea>
+                <div class="char-count">${noteObj.content.length}/500</div>
+            `;
+
+            // Elements
+            const textarea = el.querySelector('textarea');
+            const countDisplay = el.querySelector('.char-count');
+            const colorInput = el.querySelector('.color-picker');
+            const deleteBtn = el.querySelector('.delete-btn');
+            const exportBtn = el.querySelector('button[title="Export to TXT"]');
+            const header = el.querySelector('.note-header');
+
+            // Listeners
+            textarea.addEventListener('input', (e) => {
+                const text = e.target.value;
+                countDisplay.innerText = `${text.length}/500`;
+                updateNote(noteObj.id, 'content', text);
+            });
+
+            colorInput.addEventListener('input', (e) => {
+                el.style.backgroundColor = e.target.value;
+                updateNote(noteObj.id, 'color', e.target.value);
+            });
+
+            deleteBtn.addEventListener('click', () => deleteNote(noteObj.id, el));
+            exportBtn.addEventListener('click', () => exportNote(noteObj.id));
+
+            new ResizeObserver(() => {
+                updateNote(noteObj.id, 'width', parseInt(el.style.width));
+                updateNote(noteObj.id, 'height', parseInt(el.style.height));
+            }).observe(el);
+
+            el.addEventListener('mousedown', () => {
+                document.querySelectorAll('.note').forEach(n => n.style.zIndex = 1);
+                el.style.zIndex = 100;
+            });
+
+            // --- DRAG & SNAP LOGIC ---
+            header.addEventListener('mousedown', (e) => {
+                // Temporarily disable transition during drag for smoothness
+                el.classList.remove('snapping');
+
+                let shiftX = e.clientX - el.getBoundingClientRect().left;
+                let shiftY = e.clientY - el.getBoundingClientRect().top;
+
+                function moveAt(pageX, pageY) {
+                    let newLeft = pageX - shiftX;
+                    let newTop = pageY - shiftY;
+                    el.style.left = newLeft + 'px';
+                    el.style.top = newTop + 'px';
+                }
+
+                function onMouseMove(event) {
+                    moveAt(event.pageX, event.pageY);
+                }
+
+                document.addEventListener('mousemove', onMouseMove);
+
+                document.onmouseup = function() {
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.onmouseup = null;
+
+                    let finalX = parseInt(el.style.left);
+                    let finalY = parseInt(el.style.top);
+
+                    // SNAP LOGIC
+                    if (isSnapMode) {
+                        // Round to nearest grid size
+                        finalX = Math.round(finalX / GRID_SIZE) * GRID_SIZE;
+                        finalY = Math.round(finalY / GRID_SIZE) * GRID_SIZE;
+
+                        // Add class to animate the snap
+                        el.classList.add('snapping');
+                        el.style.left = finalX + 'px';
+                        el.style.top = finalY + 'px';
+                    }
+
+                    // Save new coordinates
+                    updateNote(noteObj.id, 'x', finalX);
+                    updateNote(noteObj.id, 'y', finalY);
+                };
+            });
+
+            document.getElementById('board').appendChild(el);
+        }
+    </script>
+</body>
+</html>
