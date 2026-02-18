@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher QR Toolkit</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        /* Smooth transitions for tab switching */
+        .tab-content { transition: opacity 0.3s ease-in-out; }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen p-4 md:p-8 font-sans">
+
+    <div class="max-w-md mx-auto bg-white rounded-2xl shadow-xl overflow-hidden">
+        <div class="bg-indigo-600 p-6 text-white text-center">
+            <h1 class="text-2xl font-bold">QR Toolkit for Teachers</h1>
+            <p class="text-indigo-100 text-sm mt-1">Generate or Scan in seconds</p>
+        </div>
+        
+        <div class="flex border-b">
+            <button onclick="switchTab('generate')" id="gen-tab" class="flex-1 py-4 font-semibold border-b-2 border-indigo-600 text-indigo-600 transition-all">Create</button>
+            <button onclick="switchTab('scan')" id="scan-tab" class="flex-1 py-4 font-semibold text-gray-400 border-b-2 border-transparent transition-all">Scan</button>
+        </div>
+
+        <div class="p-6">
+            <div id="generator-section" class="space-y-5">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Content or URL</label>
+                    <input type="text" id="qr-input" placeholder="e.g. https://classroom.google.com" 
+                           class="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none transition">
+                </div>
+                
+                <button onclick="generateQR()" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-lg hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition active:scale-95">
+                    Generate QR Code
+                </button>
+                
+                <div id="qr-result" class="flex flex-col items-center mt-8 hidden border-t pt-6">
+                    <div class="bg-white p-4 border-2 border-dashed border-gray-200 rounded-xl">
+                        <img id="qr-image" src="" alt="QR Code" class="w-48 h-48">
+                    </div>
+                    <button onclick="downloadQR()" class="mt-6 flex items-center gap-2 bg-gray-800 text-white px-6 py-2 rounded-full hover:bg-black transition text-sm font-medium">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        Download PNG
+                    </button>
+                </div>
+            </div>
+
+            <div id="scanner-section" class="hidden space-y-4">
+                <div id="reader" class="overflow-hidden rounded-xl bg-gray-50 border border-gray-200"></div>
+                
+                <div id="scan-result" class="mt-4 p-4 bg-emerald-50 border border-emerald-100 rounded-xl hidden">
+                    <p class="text-xs font-bold text-emerald-700 uppercase mb-1">Result Found:</p>
+                    <p id="result-text" class="text-gray-800 break-all font-medium"></p>
+                    <a id="result-link" href="#" target="_blank" class="mt-3 w-full inline-block text-center bg-emerald-600 text-white py-2 rounded-md hover:bg-emerald-700 transition hidden">
+                        Open Link
+                    </a>
+                </div>
+                <button onclick="stopScanner()" id="stop-scan-btn" class="hidden w-full text-gray-400 text-sm hover:text-red-500">Stop Camera</button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="mt-8 text-center text-gray-400 text-xs">
+        Built for Teachers • Hosted on GitHub
+    </footer>
+
+    <script>
+        let html5QrCode;
+
+        // --- Tab Switching Logic ---
+        function switchTab(tab) {
+            const genSec = document.getElementById('generator-section');
+            const scanSec = document.getElementById('scanner-section');
+            const genTab = document.getElementById('gen-tab');
+            const scanTab = document.getElementById('scan-tab');
+
+            if (tab === 'generate') {
+                stopScanner(); // Clean up camera if switching away
+                genSec.classList.remove('hidden');
+                scanSec.classList.add('hidden');
+                genTab.className = "flex-1 py-4 font-semibold border-b-2 border-indigo-600 text-indigo-600";
+                scanTab.className = "flex-1 py-4 font-semibold text-gray-400 border-b-2 border-transparent";
+            } else {
+                genSec.classList.add('hidden');
+                scanSec.classList.remove('hidden');
+                scanTab.className = "flex-1 py-4 font-semibold border-b-2 border-indigo-600 text-indigo-600";
+                genTab.className = "flex-1 py-4 font-semibold text-gray-400 border-b-2 border-transparent";
+                startScanner();
+            }
+        }
+
+        // --- Generator Logic ---
+        function generateQR() {
+            const input = document.getElementById('qr-input').value;
+            const resultDiv = document.getElementById('qr-result');
+            const qrImg = document.getElementById('qr-image');
+            
+            if (!input.trim()) return alert("Please enter text or a URL first!");
+
+            // Using QRServer API
+            const apiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(input)}`;
+            qrImg.src = apiUrl;
+            resultDiv.classList.remove('hidden');
+        }
+
+        // --- Download Logic ---
+        async function downloadQR() {
+            const qrImg = document.getElementById('qr-image');
+            const qrText = document.getElementById('qr-input').value || "qrcode";
+            
+            try {
+                const response = await fetch(qrImg.src);
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                
+                // Sanitize filename
+                const fileName = qrText.replace(/[^a-z0-9]/gi, '_').substring(0, 20);
+                link.download = `QR_${fileName}.png`;
+                
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+            } catch (error) {
+                alert("Could not download automatically. Please right-click the image and 'Save Image As'.");
+            }
+        }
+
+        // --- Scanner Logic ---
+        function startScanner() {
+            document.getElementById('stop-scan-btn').classList.remove('hidden');
+            html5QrCode = new Html5Qrcode("reader");
+            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+            html5QrCode.start({ facingMode: "environment" }, config, (decodedText) => {
+                const resultDiv = document.getElementById('scan-result');
+                const textEl = document.getElementById('result-text');
+                const linkEl = document.getElementById('result-link');
+
+                resultDiv.classList.remove('hidden');
+                textEl.innerText = decodedText;
+
+                if (decodedText.startsWith('http')) {
+                    linkEl.href = decodedText;
+                    linkEl.classList.remove('hidden');
+                } else {
+                    linkEl.classList.add('hidden');
+                }
+            }).catch(err => {
+                console.error("Camera access error:", err);
+            });
+        }
+
+        function stopScanner() {
+            if (html5QrCode && html5QrCode.isScanning) {
+                html5QrCode.stop().then(() => {
+                    document.getElementById('stop-scan-btn').classList.add('hidden');
+                    document.getElementById('scan-result').classList.add('hidden');
+                });
+            }
+        }
+    </script>
+</body>
+</html>
