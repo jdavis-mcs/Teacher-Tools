@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classroom Noise Meter</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f0f4f8;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            transition: background-color 0.2s;
+            overflow: hidden;
+        }
+
+        /* Nav Link */
+        .home-link {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            text-decoration: none;
+            color: #718096;
+            font-weight: bold;
+            font-size: 0.9rem;
+            z-index: 10;
+        }
+
+        /* The Meter Container */
+        .meter-container {
+            width: 120px;
+            height: 400px;
+            background: #e2e8f0;
+            border-radius: 60px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.1);
+            border: 5px solid white;
+        }
+
+        /* The Rising Liquid */
+        .meter-fill {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 0%;
+            background-color: #48bb78; /* Default Green */
+            transition: height 0.1s linear, background-color 0.2s;
+            border-radius: 0 0 55px 55px;
+        }
+
+        /* Emoji Reaction */
+        .emoji-display {
+            font-size: 5rem;
+            margin-bottom: 20px;
+            height: 100px; /* Prevent jump */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: bounce 2s infinite ease-in-out;
+        }
+
+        /* Controls */
+        .controls {
+            margin-top: 40px;
+            background: white;
+            padding: 20px 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.05);
+            text-align: center;
+            width: 300px;
+        }
+
+        input[type=range] {
+            width: 100%;
+            margin: 10px 0;
+            cursor: pointer;
+        }
+
+        label {
+            color: #718096;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        button#start-btn {
+            background-color: #4299e1;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.1s;
+        }
+        
+        button#start-btn:hover { background-color: #3182ce; }
+        button#start-btn:active { transform: scale(0.95); }
+
+        /* WARNING STATE */
+        body.warning {
+            animation: flashRed 0.5s infinite;
+        }
+
+        @keyframes flashRed {
+            0% { background-color: #f0f4f8; }
+            50% { background-color: #fed7d7; }
+            100% { background-color: #f0f4f8; }
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        /* Initial State Overlay */
+        #overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+        }
+        
+        h2 { color: #2d3748; margin-bottom: 10px; }
+        p { color: #718096; max-width: 400px; text-align: center; margin-bottom: 30px; }
+
+    </style>
+</head>
+<body>
+
+    <a href="../index.html" class="home-link">← Back to Dashboard</a>
+
+    <div id="overlay">
+        <h2>Noise Meter</h2>
+        <p>This app uses your microphone to visualize classroom noise levels. No audio is recorded or sent to the internet.</p>
+        <button id="start-btn" onclick="initAudio()">Start Listening</button>
+    </div>
+
+    <div class="emoji-display" id="emoji">😊</div>
+
+    <div class="meter-container">
+        <div class="meter-fill" id="fill"></div>
+    </div>
+
+    <div class="controls">
+        <label>Microphone Sensitivity</label>
+        <input type="range" id="sensitivity" min="1" max="100" value="50">
+        <div style="font-size: 0.8rem; color: #a0aec0; margin-top: 5px;">
+            Adjust this until "Quiet" is at the bottom.
+        </div>
+    </div>
+
+    <script>
+        let audioContext;
+        let analyser;
+        let microphone;
+        let isRunning = false;
+        
+        const fill = document.getElementById('fill');
+        const emoji = document.getElementById('emoji');
+        const sensitivityInput = document.getElementById('sensitivity');
+        const overlay = document.getElementById('overlay');
+
+        // Load saved sensitivity
+        const savedSense = localStorage.getItem('micSensitivity');
+        if (savedSense) sensitivityInput.value = savedSense;
+
+        async function initAudio() {
+            try {
+                // Remove overlay
+                overlay.style.opacity = 0;
+                setTimeout(() => overlay.remove(), 500);
+
+                // Initialize Audio Context
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // Request Mic Access
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                
+                microphone = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                
+                // FFT Size (Higher = more data, but we just need volume)
+                analyser.fftSize = 256;
+                microphone.connect(analyser);
+                
+                isRunning = true;
+                visualize();
+
+            } catch (err) {
+                alert("Microphone access denied. Please allow microphone permissions in your browser settings.");
+                console.error(err);
+            }
+        }
+
+        function visualize() {
+            if (!isRunning) return;
+
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(dataArray);
+
+            // Calculate average volume
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+            }
+            let average = sum / dataArray.length;
+
+            // Apply sensitivity multiplier
+            // Input range 1-100 mapped to multiplier 0.5 - 5.0
+            const sensitivity = parseInt(sensitivityInput.value);
+            const multiplier = sensitivity / 20; 
+            
+            let adjustedVal = average * multiplier;
+            
+            // Clamp between 0 and 100
+            if (adjustedVal > 100) adjustedVal = 100;
+            if (adjustedVal < 5) adjustedVal = 5; // Minimum visible
+
+            updateUI(adjustedVal);
+            
+            requestAnimationFrame(visualize);
+        }
+
+        let warningTimeout = null;
+
+        function updateUI(volume) {
+            fill.style.height = volume + "%";
+
+            // Save sensitivity setting when user changes it
+            localStorage.setItem('micSensitivity', sensitivityInput.value);
+
+            // Logic for Colors and Emojis
+            if (volume < 40) {
+                // GREEN ZONE
+                fill.style.backgroundColor = "#48bb78";
+                emoji.innerText = "😊";
+                document.body.classList.remove('warning');
+            } else if (volume >= 40 && volume < 75) {
+                // YELLOW ZONE
+                fill.style.backgroundColor = "#ecc94b";
+                emoji.innerText = "🤫";
+                document.body.classList.remove('warning');
+            } else {
+                // RED ZONE
+                fill.style.backgroundColor = "#f56565";
+                emoji.innerText = "😫";
+                
+                // Add warning flash class if not already there
+                if (!document.body.classList.contains('warning')) {
+                    document.body.classList.add('warning');
+                }
+            }
+        }
+    </script>
+</body>
+</html>
