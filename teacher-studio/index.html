@@ -596,7 +596,11 @@
                 </div>
                 <div className="flex items-center gap-2 pr-4 border-r border-gray-200">
                   <ToolButton active={tool === 'pen'} onClick={() => setTool('pen')} icon={IconPen} title="Pen" />
-                  <ToolButton active={tool === 'text'} onClick={() => setTool('text')} icon={IconType} title="Text Box" />
+                  <ToolButton active={tool === 'text'} onClick={() => {
+                        setTool('text');
+                        // Instantly spawn a text box in the center of the screen
+                        addTextItem(window.innerWidth / 2, window.innerHeight / 2);
+                    }} icon={IconType} title="Text Box" />
                   <div className="flex flex-col gap-1 px-2">
                     <div className="flex gap-1">{['#000000', '#EF4444', '#2563EB', '#16A34A'].map(c => <ColorDot key={c} c={c} />)}</div>
                     <div className="flex gap-1">{['#D97706', '#9333EA', '#EC4899', '#4B5563'].map(c => <ColorDot key={c} c={c} />)}</div>
